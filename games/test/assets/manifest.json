@@ -1,0 +1,6 @@
+{
+    "hello": {
+        "world": "helloworld.txt",
+        "somejson":"cooljson.json"
+    }
+}

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: 'unsafe-inline' data:">
+    <title>DATAURL GAMES</title>
+    <style>
+        body {
+            background: #272728;
+            color: #ffffff;
+            font-family: monospace;
+        }
+        #d-in, #a-in {
+            display: inline-block;
+            padding: 2em;
+            margin: 1em;
+            background: #3399ff44;
+            border-left: 2px solid #777;
+        }
+        #d-in.drag, #a-in:hover {
+            background: #ffffff;
+            color: #000000;
+        }
+        button {
+            background: #000000;
+            border: none;
+            font-family: monospace;
+            color: #ffffff;
+            padding: .5em;
+        }
+        button:hover {
+            background: #777777;
+        }
+        #converter {
+            padding: 1em;
+            margin: 1em;
+        }
+        #converter a {
+            overflow: hidden;
+            color: #ffffff;
+        }
+
+        #f-out {
+            width: 100%;
+            height: calc(100vh - 16em);
+            border: none;
+            border-left: 2px solid #777777;
+            background: #202022;
+        }
+    </style>
+</head>
+<body>
+    <script id="prefix-code">
+        /* Document tools */
+        let $=document,
+            _e=(e,p)=>(p??$.body).appendChild($.createElement(e)),
+            _c=(w,h,...m)=>{let c=_e("canvas");c.width=w,c.height=h;return[c,c.getContext(...m)]},
+        /* Events */
+            _h=(...e)=>addEventListener(...e),
+        /* Loops */
+            _lf,
+            _ln,
+            _lc=_=>cancelAnimationFrame(_lf),
+            _ls=f=>{_lc();_ln=()=>{f();_lf=requestAnimationFrame(_ln)};_ln()},
+        /* Assets */
+            _ae=_e("div"),
+            _aj=_at=i=>_ad[i],
+            _ai=i=>{const g=_e("img",_ae);g.src=_ad[i];return g};
+        _ae.style.display="none";
+    </script>
+    <div id="inputs">
+        <div id="d-in">DROP CODE FILES AND ASSETS HERE [ .JS / .CSS / './ASSETS/' ]</div>
+    </div>
+    <div id="converter">
+        <button id="conv">FORCE REFRESH</button>
+        <a id="d-out" target="_blank"></a>
+    </div>
+    <iframe id="f-out"></iframe>
+    <script defer>// @ts-check
+    (async()=>{
+        const LOGSTYLE = {
+            code:"border-left: 2px solid #777;background:#0077ff44;margin:.5em 1em;padding:.5em",
+            checking:"opacity:0.5;background:#ff770022;",
+            retranspiling:"padding:1em 2em;margin:1em 0em;text-align:center;font-weight:bold;border-bottom:2px solid #777;background:#3399ff44;",
+            complete:"padding:1em 2em;margin:1em 0em;text-align:center;font-weight:bold;border-bottom:2px solid #777;background:#33ff9922;",
+        };
+
+        const REGEXES = {
+            multilineComment: /\/\*(.|\r?\n)*?\*\//g,
+            lineBreak: /\s*\r?\n\s*/g,
+            inlineComment: /\/\/.*$/,
+        }
+
+        const prefixCode = document.getElementById("prefix-code").textContent.replace(REGEXES.multilineComment,"").replace(REGEXES.lineBreak,"");
+        /** @type {FileSystemFileHandle} */
+        let inputCodeFileHandle;
+        /** @type {FileSystemFileHandle} */
+        let inputStyleFileHandle;
+        /** @type {FileSystemDirectoryHandle} */
+        let inputAssetsDirectoryHandle;
+        /** @type {<T extends HTMLElement>(q:string)=>T} */
+        const dqs=s=>document.querySelector(s);
+
+        console.log("%cPrefix Code:\n%s",LOGSTYLE.code,prefixCode);
+
+        const dIn = dqs("#d-in");
+        /** @type {HTMLButtonElement} */
+        const convBtn = dqs("#conv");
+        /** @type {HTMLLinkElement} */
+        const dOut = dqs("#d-out");
+        /** @type {HTMLIFrameElement} */
+        const fOut = dqs("#f-out");
+
+        let lastEditedCode = -Infinity;
+        let lastEditedStyle = -Infinity;
+        let lastEditedAssets = "";
+        
+
+        /** @type {(text:string,lenLimit:number)=>string} */
+        const textLenLimit = (text,lenLimit)=>text.length>lenLimit?text.slice(0,lenLimit)+"...":text;
+
+        /** @type {(ms:number)=>Promise<void>} */
+        const delay = (ms)=>new Promise(res=>setTimeout(res,ms));
+
+        /** @type {(blob:Blob)=>Promise<string>} */
+        const blobToDataURL = (blob)=>new Promise(res=>{
+            const reader = new FileReader();
+            // @ts-ignore
+            reader.onload = ()=>res(reader.result);
+            reader.readAsDataURL(blob);
+        });
+
+        /** @type {(toEscape:string)=>string} */
+        const lazyURLEncode = s=>s.replace(/[%#!?]|\s/g,v=>`%${(()=>{const s=v.charCodeAt(0).toString(16);return "0".repeat(2-s.length)+s})()}`)
+
+        const convert = async()=>{
+            if (!inputCodeFileHandle) return;
+            console.log("%cchecking...",LOGSTYLE.checking);
+            
+            const lastEditedAssetsNow = inputAssetsDirectoryHandle ? (
+                await traverseAssets(async(path,ns,key,handle)=>
+                    handle.getFile().then(f=>`${f.lastModified}:${path}:${ns}:${key}`)
+                )
+            ).sort().join("::") : "";
+
+            const
+                fTFile = await inputCodeFileHandle.getFile(), fSFile = await inputStyleFileHandle?.getFile();
+            if (fTFile.lastModified <= lastEditedCode && (!fSFile || fSFile.lastModified <= lastEditedStyle) && lastEditedAssets === lastEditedAssetsNow)
+                return;
+            lastEditedAssets = lastEditedAssetsNow;
+            lastEditedCode = fTFile.lastModified;
+            if (fSFile) lastEditedStyle = fSFile.lastModified;
+
+            console.log("%c%s",LOGSTYLE.retranspiling,"RETRANSPILING");
+            const
+                fS = fSFile ? (await fSFile.text()).replace(REGEXES.multilineComment,"").replace(/\s+/g," ").trim() : "",
+                fTRaw = await fTFile.text(),
+                fTA = fTRaw.replace(REGEXES.multilineComment,"").split(REGEXES.lineBreak),
+                fTB = fTA.slice(2).map(v=>
+                    v.replace(REGEXES.inlineComment,"").trim()
+                ).filter(v=>v.length>0).join("");
+            let fTC = "", wasEscape = false, wasSpace = false, wasBreaker = false;
+            /** @type {false|"'"|"\""|"`"} */
+            let inString = false;
+            for (const ch of fTB) {
+                if (inString) {
+                    if (ch === inString && !wasEscape) {
+                        inString = false;
+                        wasBreaker = true;
+                    }
+                    fTC += ch;
+                } else {
+                    const isSpace = /\s/.test(ch);
+                    if (isSpace) {
+                        if (!wasBreaker)
+                            fTC += " ";
+                    } else
+                        fTC += ch;
+                    if (ch === "'" || ch === "\"" || ch === "`")
+                        inString = ch;
+                    wasSpace = isSpace;
+                    wasBreaker = isSpace || /[^a-zA-Z0-9_$]/.test(ch);
+                    if (!isSpace && wasBreaker)
+                        fTC = fTC.trim();
+                }
+                wasEscape = ch === "\\";
+            }
+            const fT = fTC;
+
+            const fAA = inputAssetsDirectoryHandle ? await traverseAssets(async(path,ns,key,handle)=>{
+                /** @type {File} */
+                const file = await handle.getFile();
+                return {
+                    data: await ({
+                        "text/plain": async()=>await file.text(),
+                        "application/json": async()=>JSON.parse(await file.text()),
+                    }[file.type] ?? (async()=>await blobToDataURL(new Blob([await file.arrayBuffer()],{type:file.type}))))(),
+                    location: `${ns}:${key}`,
+                };
+            }) : [];
+            // @ts-ignore
+            const fAB = Object.fromEntries(fAA.map(({data,location})=>[location,data])),
+                fA = `let _ad=${JSON.stringify(fAB)};`
+
+
+            console.log("%cLoaded Code:\n%s",LOGSTYLE.code,fT);
+            console.log("%cLoaded Style:\n%s",LOGSTYLE.code,fS);
+            console.log("%cLoaded Assets:\n%s",LOGSTYLE.code,fAA.map(v=>`[${v.location}]|${textLenLimit(JSON.stringify(v.data),50)}`).join("\n") || "<none>");
+
+            console.log("%c%s",LOGSTYLE.complete,"COMPLETED");
+
+
+            const transpiled = "data:text/html,"+lazyURLEncode(`<style>${fS}</style><body></body><script>${fA}${prefixCode+fT}<${""}/script>`);
+            dOut.href = transpiled;
+            dOut.innerText = textLenLimit(transpiled,50);
+            fOut.src = transpiled;
+        };
+        /** @type {(fileHandle:FileSystemFileHandle,which:"code"|"style")=>void} */
+        const setFileHandle = (fileHandle,which)=>{
+            if (which === "code") {
+                inputCodeFileHandle = fileHandle;
+                lastEditedCode = -Infinity;
+            }
+            if (which === "style") {
+                inputStyleFileHandle = fileHandle;
+                lastEditedStyle = -Infinity;
+            }
+            onSetHandle();
+        };
+        /** @type {(assetsHandle:FileSystemDirectoryHandle)=>Promise<void>} */
+        const setAssetsHandle = async(assetsHandle)=>{
+            inputAssetsDirectoryHandle = assetsHandle;
+            lastEditedAssets = "";
+            onSetHandle();
+        };
+        const onSetHandle = ()=>delay(50).then(()=>convert());
+
+        /** @type {<T>(fn:(path:string,ns:string,key:string,handle:FileSystemFileHandle)=>Promise<T>,dirHandleIn?:FileSystemDirectoryHandle)=>Promise<T[]>} */
+        const traverseAssets = async(fn,dirHandleIn)=>{
+            /** @type {Promise<any>[]} */
+            const promises = [], dirHandle = dirHandleIn ?? inputAssetsDirectoryHandle;
+
+            if (!dirHandle) throw new Error("no assets directory?");
+
+            /** @type {{[ns:string]:{[path:string]:string}}} */
+            const manifest = JSON.parse(await (await (await dirHandle.getFileHandle("manifest.json")).getFile()).text());
+            for (const ns in manifest) {
+                for (const key in manifest[ns]) {
+                    const path = manifest[ns][key];
+                    promises.push(dirHandle.getFileHandle(path).then(f=>fn(path,ns,key,f)))
+                }
+            }
+
+            // @ts-ignore
+            return await Promise.all(promises);
+        }
+
+        /** @type {(elt:HTMLElement,onFile:(f:FileSystemFileHandle|FileSystemDirectoryHandle)=>void)=>void} */
+        const fileInput = (elt,onFile)=>{
+            elt.addEventListener("dragover",e=>{
+                e.preventDefault();
+                elt.classList.add("drag");
+            });
+            elt.addEventListener("dragleave",e=>{
+                elt.classList.remove("drag");
+            })
+            elt.addEventListener("drop",async e=>{
+                elt.classList.remove("drag");
+                e.preventDefault();
+                for (const item of e.dataTransfer.items) {
+                    if (item.kind === "file") {
+                        // @ts-ignore
+                        item.getAsFileSystemHandle().then(onFile);
+                    }
+                }
+            });
+            elt.addEventListener("click",async ()=>{
+                // @ts-ignore
+                onFile(showOpenFilePicker());
+            });
+        }
+
+        fileInput(dIn,async f=>{
+            if (f.kind === "file") {
+                const type = {
+                    js:"code",
+                    css:"style",
+                    _:"none"
+                }[(f.name.match(/\.(js|css)$/i)??[,"_"])[1]];
+                if (type === "none") return;
+                setFileHandle(f,type);
+            }
+            if (f.kind === "directory") {
+                if (f.name === "assets") {
+                    const keyRegex = /^\w+$/;
+                    const validity = (await traverseAssets(async(path,ns,key)=>{
+                        if (!keyRegex.test(ns) || !keyRegex.test(key))
+                            return `Asset key [${ns}:${key}] failed: 'ns' or 'key' did not match /${keyRegex}/`
+                    },f)).filter(Boolean)
+                    setAssetsHandle(f);
+                }
+            }
+        });
+
+        window.addEventListener("focus",e=>convert())
+        convBtn.addEventListener("click",convert);
+    })()</script>
+</body>
+</html>
