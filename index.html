@@ -23,16 +23,20 @@
             background: #ffffff;
             color: #000000;
         }
-        button {
+        button, input {
             background: #000000;
             border: none;
             font-family: monospace;
             color: #ffffff;
             padding: .5em;
         }
-        button:hover {
+        button:hover, input:active {
             background: #777777;
         }
+        #title-in {
+            border-left: 2px solid #777;
+        }
+
         #converter {
             padding: 1em;
             margin: 1em;
@@ -44,7 +48,7 @@
 
         #f-out {
             width: 100%;
-            height: calc(100vh - 16em);
+            height: calc(100vh - 17.5em);
             border: none;
             border-left: 2px solid #777777;
             background: #202022;
@@ -56,7 +60,10 @@
         /* Document tools */
         let $=document,
             _e=(e,p)=>(p??$.body).appendChild($.createElement(e)),
-            _c=(w,h,...m)=>{let c=_e("canvas");c.width=w,c.height=h;return[c,c.getContext(...m)]},
+            _c=(...m)=>{let c=_e("canvas");return[c,c.getContext(...m)]},
+        /* Utilities */
+            __s=(e,s)=>Object.entries(s).forEach(([k,v])=>e[k]=v)||e,
+            __a=(l,f)=>new Array(l).fill().map((_,i)=>f(i)),
         /* Events */
             _h=(...e)=>addEventListener(...e),
         /* Loops */
@@ -77,6 +84,7 @@
         <button id="conv">FORCE REFRESH</button>
         <a id="d-out" target="_blank"></a>
     </div>
+    <input id="title-in" placeholder="program title"/>
     <iframe id="f-out"></iframe>
     <script defer>// @ts-check
     (async()=>{
@@ -112,10 +120,13 @@
         const dOut = dqs("#d-out");
         /** @type {HTMLIFrameElement} */
         const fOut = dqs("#f-out");
+        /** @type {HTMLInputElement} */
+        const titleIn = dqs("#title-in");
 
         let lastEditedCode = -Infinity;
         let lastEditedStyle = -Infinity;
         let lastEditedAssets = "";
+        let lastTitleIn = "";
         
 
         /** @type {(text:string,lenLimit:number)=>string} */
@@ -147,14 +158,16 @@
 
             const
                 fTFile = await inputCodeFileHandle.getFile(), fSFile = await inputStyleFileHandle?.getFile();
-            if (fTFile.lastModified <= lastEditedCode && (!fSFile || fSFile.lastModified <= lastEditedStyle) && lastEditedAssets === lastEditedAssetsNow)
+            if (fTFile.lastModified <= lastEditedCode && (!fSFile || fSFile.lastModified <= lastEditedStyle) && lastEditedAssets === lastEditedAssetsNow && lastTitleIn === titleIn.value)
                 return;
             lastEditedAssets = lastEditedAssetsNow;
             lastEditedCode = fTFile.lastModified;
+            lastTitleIn = titleIn.value;
             if (fSFile) lastEditedStyle = fSFile.lastModified;
 
             console.log("%c%s",LOGSTYLE.retranspiling,"RETRANSPILING");
             const
+                title = titleIn.value||"unnamed",
                 fS = fSFile ? (await fSFile.text()).replace(REGEXES.multilineComment,"").replace(/\s+/g," ").trim() : "",
                 fTRaw = await fTFile.text(),
                 fTA = fTRaw.replace(REGEXES.multilineComment,"").split(REGEXES.lineBreak),
@@ -212,7 +225,7 @@
             console.log("%c%s",LOGSTYLE.complete,"COMPLETED");
 
 
-            const transpiled = "data:text/html,"+lazyURLEncode(`<style>${fS}</style><body></body><script>${fA}${prefixCode+fT}<${""}/script>`);
+            const transpiled = "data:text/html,"+lazyURLEncode(`<title>${title}</title><style>${fS}</style><body></body><script>${fA}${prefixCode+fT}<${""}/script>`);
             dOut.href = transpiled;
             dOut.innerText = textLenLimit(transpiled,50);
             fOut.src = transpiled;
@@ -277,22 +290,39 @@
                 }
             });
             elt.addEventListener("click",async ()=>{
+                /** @type {FileSystemDirectoryHandle} */
                 // @ts-ignore
-                onFile(showOpenFilePicker());
+                const dir = await showDirectoryPicker(), vals = dir.values();
+
+                /** @type {(FileSystemDirectoryHandle|FileSystemFileHandle)[]} */
+                const fileHandles = [];
+                for(;;) {
+                    /** @type {{done:true,value:null}|{done:false,value:FileSystemDirectoryHandle|FileSystemFileHandle}} */
+                    const ent = await vals.next();
+                    if (!ent.done)
+                        fileHandles.push(ent.value)
+                    else break;
+                }
+                console.log(fileHandles);
+                fileHandles.forEach(onFile);
             });
         }
 
         fileInput(dIn,async f=>{
             if (f.kind === "file") {
-                const type = {
-                    js:"code",
-                    css:"style",
-                    _:"none"
-                }[(f.name.match(/\.(js|css)$/i)??[,"_"])[1]];
-                if (type === "none") return;
-                setFileHandle(f,type);
-            }
-            if (f.kind === "directory") {
+                if (/^\.title ([a-zA-Z0-9-_\[\](){}., ])+$/.test(f.name.trim())) {
+                    titleIn.value = f.name.slice(7).trim();
+                    onSetHandle();
+                } else {
+                    const type = {
+                        js:"code",
+                        css:"style",
+                        _:"none"
+                    }[(f.name.match(/\.(js|css)$/i)??[,"_"])[1]];
+                    if (type === "none") return;
+                    setFileHandle(f,type);
+                }
+            } else if (f.kind === "directory") {
                 if (f.name === "assets") {
                     const keyRegex = /^\w+$/;
                     const validity = (await traverseAssets(async(path,ns,key)=>{
@@ -304,8 +334,10 @@
             }
         });
 
-        window.addEventListener("focus",e=>convert())
+        window.addEventListener("focus",e=>convert());
         convBtn.addEventListener("click",convert);
+
+        titleIn.addEventListener("change",e=>convert());
     })()</script>
 </body>
 </html>

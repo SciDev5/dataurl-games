@@ -4,16 +4,33 @@ type HTMLElementsByTag = {
     img: HTMLImageElement;
     a: HTMLLinkElement;
     input: HTMLInputElement;
+
+    table: HTMLTableElement;
+    tbody: HTMLBodyElement;
+    tr: HTMLTableRowElement;
+    td: HTMLTableCellElement;
+
+    button: HTMLButtonElement;
+
+    h1: HTMLElement;
+    h2: HTMLElement;
+    h3: HTMLElement;
+    h4: HTMLElement;
+    h5: HTMLElement;
 }
 
 declare const $:typeof document;
-declare const _e:<T extends keyof HTMLElementsByTag>(e:T)=>HTMLElementsByTag[T];
+declare const _e:<T extends keyof HTMLElementsByTag>(tagName:T,parent?:HTMLElement)=>HTMLElementsByTag[T];
+
+declare const __s:<T extends object>(elt:T,properties:{[key in keyof T]?:T[key]})=>T;
+declare const __a:<T>(length:number,genFunction:(i:number)=>T)=>T[];
 
 type f = {
     "2d":{param:CanvasRenderingContext2DSettings,ret:CanvasRenderingContext2D},
     "webgl2":{param:WebGLContextAttributes,ret:WebGL2RenderingContext},
 };
-declare const _c:<T extends keyof f>(width:number,height:number,type:T,options?:f[T]["param"])=>[HTMLCanvasElement,f[T]["ret"]];
+declare const _c:<T extends keyof f>(type:T,options?:f[T]["param"])=>[HTMLCanvasElement,f[T]["ret"]];
+
 
 declare const _ls:(callback:()=>void)=>void;
 declare const _lc:()=>void;
@@ -25,4 +42,4 @@ declare const _aj:(namespacedId:string)=>any;
 declare const _ai:(namespacedId:string)=>HTMLImageElement;
 
 
-export {$,_e,_c,_ls,_lc,_h,_at,_ai,_aj};
+export {$,_e,_c,_ls,_lc,_h,_at,_ai,_aj,__s,__a};

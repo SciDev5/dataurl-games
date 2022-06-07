@@ -1,7 +1,8 @@
 // @ts-check
-import { _aj, _at, _c, _e, _h, _ls } from "../../code-prefix";
+import { _aj, _at, _c, _e, _h, _ls, __s } from "../../code-prefix";
 
-const [{width:cw,height:ch},ctx] = _c(window.innerWidth,window.innerHeight-50,"2d");
+const [c,ctx] = _c("2d"), cw=window.innerWidth, ch=window.innerHeight-50;
+__s(c,{width:cw,height:ch});
 
 const tx = _e("div");
 let n = 0;
