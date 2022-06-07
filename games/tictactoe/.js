@@ -81,6 +81,7 @@ nextPlayer();
 restartBtn.onclick=e=>{
     board.forEach(({cols},y)=>cols.forEach((cel,x)=>cel.className=""));
     win=-1;
+    winDisp.innerText="";
     p=-1;
     nextPlayer();
 };
