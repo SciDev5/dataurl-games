@@ -23,14 +23,14 @@
             background: #ffffff;
             color: #000000;
         }
-        button, input {
+        button, input, #use-base64-contain {
             background: #000000;
             border: none;
             font-family: monospace;
             color: #ffffff;
             padding: .5em;
         }
-        button:hover, input:active {
+        button:hover, input:active, #use-base64-contain:hover {
             background: #777777;
         }
         #title-in {
@@ -82,6 +82,7 @@
     </div>
     <div id="converter">
         <button id="conv">FORCE REFRESH</button>
+        <span id="use-base64-contain">Use Base64: <span id="use-base64">FALSE</span></span>
         <a id="d-out" target="_blank"></a>
     </div>
     <input id="title-in" placeholder="program title"/>
@@ -122,11 +123,14 @@
         const fOut = dqs("#f-out");
         /** @type {HTMLInputElement} */
         const titleIn = dqs("#title-in");
+        const useBase64In = dqs("#use-base64");
+        const useBase64InContain = dqs("#use-base64-contain");
 
         let lastEditedCode = -Infinity;
         let lastEditedStyle = -Infinity;
         let lastEditedAssets = "";
         let lastTitleIn = "";
+        let lastUseBase64 = false, useBase64 = false;
         
 
         /** @type {(text:string,lenLimit:number)=>string} */
@@ -146,6 +150,47 @@
         /** @type {(toEscape:string)=>string} */
         const lazyURLEncode = s=>s.replace(/[%#!?]|\s/g,v=>`%${(()=>{const s=v.charCodeAt(0).toString(16);return "0".repeat(2-s.length)+s})()}`)
 
+
+        /** @type {{[type in "code"|"style"]:(strIn:string)=>string}} */
+        const format = {
+            style: raw=>raw
+                .replace(REGEXES.multilineComment,"")
+                .replace(/\s+/g," ")
+                .replace(/ ?([{};:]) ?/g,"$1")
+                .trim(),
+            code: raw=>{
+                const codeDecommented = raw.replace(REGEXES.multilineComment,"").split(REGEXES.lineBreak).slice(2).map(v=>
+                    v.replace(REGEXES.inlineComment,"").trim()
+                ).filter(v=>v.length>0).join("");
+                let codeDespaced = "", wasEscape = false, wasSpace = false, wasBreaker = false;
+                /** @type {false|"'"|"\""|"`"|"/"} */
+                let inString = false;
+                for (const ch of codeDecommented) {
+                    if (inString) {
+                        if (ch === inString && !wasEscape) {
+                            inString = false;
+                            wasBreaker = true;
+                        }
+                        codeDespaced += ch;
+                    } else {
+                        const isSpace = /\s/.test(ch), isBreaker = /[=+-,./\\[\](){}|&*!`^'"<>?~#;:]/.test(ch);
+                        if (ch === "'" || ch === "\"" || ch === "`" || ch === "/")
+                            inString = ch;
+                        if (isBreaker)
+                            codeDespaced = codeDespaced.trim();
+                        if (!isSpace)
+                            codeDespaced += ch;
+                        else if (!wasBreaker)
+                            codeDespaced += " ";
+                        wasSpace = isSpace;
+                        wasBreaker = isSpace || isBreaker;
+                    }
+                    wasEscape = ch === "\\";
+                }
+                return codeDespaced;
+            }
+        }
+
         const convert = async()=>{
             if (!inputCodeFileHandle) return;
             console.log("%cchecking...",LOGSTYLE.checking);
@@ -158,51 +203,26 @@
 
             const
                 fTFile = await inputCodeFileHandle.getFile(), fSFile = await inputStyleFileHandle?.getFile();
-            if (fTFile.lastModified <= lastEditedCode && (!fSFile || fSFile.lastModified <= lastEditedStyle) && lastEditedAssets === lastEditedAssetsNow && lastTitleIn === titleIn.value)
-                return;
+            if (
+                fTFile.lastModified <= lastEditedCode &&
+                (!fSFile || fSFile.lastModified <= lastEditedStyle) &&
+                lastEditedAssets === lastEditedAssetsNow &&
+                lastTitleIn === titleIn.value &&
+                lastUseBase64 === useBase64
+            ) return;
             lastEditedAssets = lastEditedAssetsNow;
             lastEditedCode = fTFile.lastModified;
             lastTitleIn = titleIn.value;
+            lastUseBase64 = useBase64;
             if (fSFile) lastEditedStyle = fSFile.lastModified;
 
             console.log("%c%s",LOGSTYLE.retranspiling,"RETRANSPILING");
             const
                 title = titleIn.value||"unnamed",
-                fS = fSFile ? (await fSFile.text()).replace(REGEXES.multilineComment,"").replace(/\s+/g," ").trim() : "",
-                fTRaw = await fTFile.text(),
-                fTA = fTRaw.replace(REGEXES.multilineComment,"").split(REGEXES.lineBreak),
-                fTB = fTA.slice(2).map(v=>
-                    v.replace(REGEXES.inlineComment,"").trim()
-                ).filter(v=>v.length>0).join("");
-            let fTC = "", wasEscape = false, wasSpace = false, wasBreaker = false;
-            /** @type {false|"'"|"\""|"`"} */
-            let inString = false;
-            for (const ch of fTB) {
-                if (inString) {
-                    if (ch === inString && !wasEscape) {
-                        inString = false;
-                        wasBreaker = true;
-                    }
-                    fTC += ch;
-                } else {
-                    const isSpace = /\s/.test(ch);
-                    if (isSpace) {
-                        if (!wasBreaker)
-                            fTC += " ";
-                    } else
-                        fTC += ch;
-                    if (ch === "'" || ch === "\"" || ch === "`")
-                        inString = ch;
-                    wasSpace = isSpace;
-                    wasBreaker = isSpace || /[^a-zA-Z0-9_$]/.test(ch);
-                    if (!isSpace && wasBreaker)
-                        fTC = fTC.trim();
-                }
-                wasEscape = ch === "\\";
-            }
-            const fT = fTC;
+                formattedStyle = fSFile ? format.style(await fSFile.text()) : "",
+                formattedCode = format.code(await fTFile.text());
 
-            const fAA = inputAssetsDirectoryHandle ? await traverseAssets(async(path,ns,key,handle)=>{
+            const assetsList = inputAssetsDirectoryHandle ? await traverseAssets(async(path,ns,key,handle)=>{
                 /** @type {File} */
                 const file = await handle.getFile();
                 return {
@@ -210,22 +230,27 @@
                         "text/plain": async()=>await file.text(),
                         "application/json": async()=>JSON.parse(await file.text()),
                     }[file.type] ?? (async()=>await blobToDataURL(new Blob([await file.arrayBuffer()],{type:file.type}))))(),
-                    location: `${ns}:${key}`,
+                    key: `${ns}:${key}`,
                 };
             }) : [];
-            // @ts-ignore
-            const fAB = Object.fromEntries(fAA.map(({data,location})=>[location,data])),
-                fA = `let _ad=${JSON.stringify(fAB)};`
+            /** @type {{[key:string]:any}} */
+            const assetsByKey = {};
+            assetsList.forEach(({data,key})=>assetsByKey[key]=data);
+
+            const formattedAssetsLoader = `let _ad=${JSON.stringify(assetsByKey)};`
 
 
-            console.log("%cLoaded Code:\n%s",LOGSTYLE.code,fT);
-            console.log("%cLoaded Style:\n%s",LOGSTYLE.code,fS);
-            console.log("%cLoaded Assets:\n%s",LOGSTYLE.code,fAA.map(v=>`[${v.location}]|${textLenLimit(JSON.stringify(v.data),50)}`).join("\n") || "<none>");
+            console.log("%cLoaded Code:\n%s",LOGSTYLE.code,formattedCode);
+            console.log("%cLoaded Style:\n%s",LOGSTYLE.code,formattedStyle);
+            console.log("%cLoaded Assets:\n%s",LOGSTYLE.code,assetsList.map(v=>`[${v.key}]|${textLenLimit(JSON.stringify(v.data),50)}`).join("\n") || "<none>");
 
             console.log("%c%s",LOGSTYLE.complete,"COMPLETED");
 
+            const transpiledHTML = `<title>${title}</title><style>${formattedStyle}</style><body></body><script>${formattedAssetsLoader}${prefixCode+formattedCode}<${""}/script>`;
 
-            const transpiled = "data:text/html,"+lazyURLEncode(`<title>${title}</title><style>${fS}</style><body></body><script>${fA}${prefixCode+fT}<${""}/script>`);
+            const transpiled = useBase64 ?
+                await blobToDataURL(new Blob([transpiledHTML],{type:"text/html"})) :
+                "data:text/html,"+lazyURLEncode(transpiledHTML);
             dOut.href = transpiled;
             dOut.innerText = textLenLimit(transpiled,50);
             fOut.src = transpiled;
@@ -338,6 +363,12 @@
         convBtn.addEventListener("click",convert);
 
         titleIn.addEventListener("change",e=>convert());
+        useBase64InContain.addEventListener("click",e=>{
+            useBase64 = !useBase64;
+            useBase64In.innerText = (useBase64+"").toUpperCase();
+            convert();
+        });
+        useBase64InContain.addEventListener("mousedown",e=>e.preventDefault());
     })()</script>
 </body>
 </html>
