@@ -59,24 +59,25 @@
     <script id="prefix-code">
         /* Document tools */
         let $=document,
-            _e=(e,p)=>(p??$.body).appendChild($.createElement(e)),
-            _et=(t,p)=>p.append($.createTextNode(t)),
-            _c=(...m)=>{let c=_e("canvas");return[c,c.getContext(...m)]},
+            _e=(e,p)=>(p??$.body).appendChild($.createElement(e)),              //[]
+            _et=(t,p)=>p.append($.createTextNode(t)),                           //[]
+            _c=(...m)=>{let c=_e("canvas");return[c,c.getContext(...m)]},       //[_e]
         /* Utilities */
-            __s=(e,s)=>Object.entries(s).forEach(([k,v])=>e[k]=v)||e,
-            __a=(l,f)=>new Array(l).fill().map((_,i)=>f(i)),
+            __s=(e,s)=>Object.entries(s).forEach(([k,v])=>e[k]=v)||e,           //[]
+            __a=(l,f)=>new Array(l).fill().map((_,i)=>f(i)),                    //[]
         /* Events */
-            _h=(...e)=>addEventListener(...e),
+            _h=(...e)=>addEventListener(...e),                                  //[]
         /* Loops */
-            _lf,
-            _ln,
-            _lc=_=>cancelAnimationFrame(_lf),
-            _ls=f=>{_lc();_ln=()=>{f();_lf=requestAnimationFrame(_ln)};_ln()},
+            _lf,                                                                //[]
+            _ln,                                                                //[]
+            _lc=_=>cancelAnimationFrame(_lf),                                   //[_lf]
+            _ls=f=>{_lc();_ln=()=>{f();_lf=requestAnimationFrame(_ln)};_ln()},  //[_lf,_lc,_ln]
         /* Assets */
-            _ae=_e("div"),
-            _aj=_at=i=>_ad[i],
-            _ai=i=>{const g=_e("img",_ae);g.src=_ad[i];return g};
-        _ae.style.display="none";
+            _ae=__s(_e("div"),{style:"display:none"}),                          //[__s,_e]
+            _aj=                                                                //[_at]
+            _at=i=>_ad[i],                                                      //[]
+            _ai=i=>{const g=_e("img",_ae);g.src=_ad[i];return g}                //[_e,_ae,_ad]
+;
     </script>
     <div id="inputs">
         <div id="d-in">DROP CODE FILES AND ASSETS HERE [ '*.JS', '*.CSS' | 'ASSETS/' | 'icon.png' | '.title *' ]</div>
@@ -98,12 +99,16 @@
         };
 
         const REGEXES = {
+            windowsLineBreak: /\r?\n/g,
             multilineComment: /\/\*[^]*?\*\//g,
             lineBreak: /\s*\r?\n\s*/g,
             inlineComment: /((?!:)[^])\/\/.*$|^\/\/.*$/,
         }
 
-        const prefixCode = document.getElementById("prefix-code").textContent.replace(REGEXES.multilineComment,"").replace(REGEXES.lineBreak,"");
+        const
+            prefixCode = document.getElementById("prefix-code").textContent.replace(REGEXES.windowsLineBreak,"\n").replace(REGEXES.multilineComment,"").trim(),
+            /** @type {{[key:string]:string[]}} */
+            prefixInterdependencies = Object.fromEntries(prefixCode.split("\n").map(v=>/^(\w+)[=,].*?\/\/\[(.*?)\]$/.exec(v.trim())).filter(v=>v!==null).map(([,varIn,deps])=>[varIn,deps.split(",")]));
         /** @type {FileSystemFileHandle} */
         let inputCodeFileHandle;
         /** @type {FileSystemFileHandle} */
@@ -117,7 +122,7 @@
         /** @type {<T extends HTMLElement>(q:string)=>T} */
         const dqs=s=>document.querySelector(s);
 
-        console.log("%cPrefix Code:\n%s",LOGSTYLE.code,prefixCode);
+        console.log("%cPrefix Code:\n%s",LOGSTYLE.code,prefixCode.split("\n").map(v=>v.replace(REGEXES.inlineComment,"$1").trim()).join(""));
 
         const dIn = dqs("#d-in");
         /** @type {HTMLButtonElement} */
@@ -157,6 +162,25 @@
         /** @type {(toEscape:string)=>string} */
         const lazyURLEncode = s=>s.replace(/[%#!?]|\s/g,v=>`%${(()=>{const s=v.charCodeAt(0).toString(16);return "0".repeat(2-s.length)+s})()}`)
 
+        /** @type {(usedVars:string[])=>string} */
+        const genPrefixCode = usedVars=>{
+            const trueDeps = new Set(usedVars);
+            usedVars.forEach(vName=>prefixInterdependencies[vName].forEach(vDep=>trueDeps.add(vDep)));
+
+            return prefixCode
+                .split(/\n/)
+                .filter(line=>{
+                    const match = /^(\w+)[=,].*?\/\/\[.*?\]$/.exec(line.trim());
+                    if (match) { // is optional line.
+                        const [,vName] = match;
+                        return trueDeps.has(vName);
+
+                    } else return true;
+                })
+                .map(v=>v.replace(REGEXES.inlineComment,"$1").trim())
+                .join("")
+                .replace(/,;/g,";");
+        };
 
         /** @type {{[type in "code"|"style"|"codeExtras"|"html"]:(strIn:string)=>string}} */
         const format = {
@@ -164,17 +188,19 @@
                 .replace(/const /g,"let ")
                 .replace(/true /),
             style: raw=>raw
+                .replace(REGEXES.windowsLineBreak,"\n")
                 .replace(REGEXES.multilineComment,"")
                 .replace(/\s+/g," ")
                 .replace(/ ?([{};:]) ?/g,"$1")
                 .trim(),
-            html: html=>{
-                return html.replace(/\s*\r?\n\s*/g," ").trim();
-            },
+            html: html=>html
+                .replace(REGEXES.windowsLineBreak,"\n")
+                .replace(/\s*\n\s*/g," ").trim(),
             code: raw=>{
                 const codeAfterHeader = raw
-                    .replace(/^[^]*?import\s*\{.*?code-prefix";?\s*/,"")
-                    .replace(/export .*?(\r?\n\s*)*$/,"");
+                    .replace(REGEXES.windowsLineBreak,"\n")
+                    .replace(/^[^]*?import\s*{(.*?)}.*?code-prefix";?\s*/,"[$1]")
+                    .replace(/export .*?(\n\s*)*$/,"");
                 const codeDecommented = codeAfterHeader
                     .replace(REGEXES.multilineComment,"")
                     .split(REGEXES.lineBreak).map(v=>
@@ -222,7 +248,10 @@
             ).sort().join("::") : "";
 
             const
-                fTFile = await inputCodeFileHandle.getFile(), fSFile = await inputStyleFileHandle?.getFile(), fIFile = await inputIconFileHandle?.getFile(), fHFile = await inputHTMLFileHandle?.getFile();
+                fTFile = await inputCodeFileHandle.getFile(),
+                fSFile = await inputStyleFileHandle?.getFile(),
+                fIFile = await inputIconFileHandle?.getFile(),
+                fHFile = await inputHTMLFileHandle?.getFile();
             if (
                 fTFile.lastModified <= lastEditedCode &&
                 (!fSFile || fSFile.lastModified <= lastEditedStyle) &&
@@ -244,9 +273,11 @@
             const
                 title = titleIn.value||"unnamed",
                 formattedHTMLInject = fHFile ? format.html(await fHFile.text()) : "",
-                formattedCode = format.code(await fTFile.text()),
+                formattedCodeWithHeader = format.code(await fTFile.text()), _=console.log(formattedCodeWithHeader),
+                [,usedPrefixCodeRaw,formattedCode] = /^\[(.*?)\]([^]*)$/.exec(formattedCodeWithHeader) ?? [,"",formattedCodeWithHeader],
                 formattedStyle = fSFile ? format.style(await fSFile.text()) : "",
-                formattedIconSrc = fIFile ? await blobToDataURL(new Blob([await fIFile.arrayBuffer()],{type:fIFile.type})) : "";
+                formattedIconSrc = fIFile ? await blobToDataURL(new Blob([await fIFile.arrayBuffer()],{type:fIFile.type})) : "",
+                formattedPrefixCode = genPrefixCode(usedPrefixCodeRaw.split(",").map(v=>v.trim()).filter(v=>v.length>0));
 
             const assetsList = inputAssetsDirectoryHandle ? await traverseAssets(async(path,ns,key,handle)=>{
                 /** @type {File} */
@@ -267,6 +298,7 @@
 
 
             console.log("%cLoaded Code:\n%s",LOGSTYLE.code,formattedCode);
+            console.log("%cLoaded Prefix:\n%s",LOGSTYLE.code,formattedPrefixCode);
             formattedStyle && console.log("%cLoaded Style:\n%s",LOGSTYLE.code,formattedStyle);
             formattedHTMLInject && console.log("%cLoaded HTML:\n%s",LOGSTYLE.code,formattedHTMLInject);
             formattedIconSrc && console.log("%cLoaded Icon:\n%s",LOGSTYLE.code,formattedIconSrc);
@@ -274,7 +306,7 @@
 
             console.log("%c%s",LOGSTYLE.complete,"COMPLETED");
 
-            const formattedHTML = `<title>${title}</title>${fIFile?`<link rel="icon" type="${fIFile.type}" href="${formattedIconSrc}">`:""}<style>${formattedStyle}</style>${formattedHTMLInject}<body></body><script>${formattedAssetsLoader}${prefixCode+formattedCode}<${""}/script>`;
+            const formattedHTML = `<title>${title}</title>${fIFile?`<link rel="icon" type="${fIFile.type}" href="${formattedIconSrc}">`:""}<style>${formattedStyle}</style>${formattedHTMLInject}<body></body><script>${formattedAssetsLoader}${formattedPrefixCode}${formattedCode}<${""}/script>`;
 
             const formatted = useBase64 ?
                 await blobToDataURL(new Blob([formattedHTML],{type:"text/html"})) :
