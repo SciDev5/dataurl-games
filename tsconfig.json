@@ -1,6 +1,11 @@
 {
     "compilerOptions": {
-        "rootDir": "./games/",
-        "lib": ["ESNext","DOM"]
-    }
+        "lib": ["ESNext","DOM"],
+        "module": "ES2022",
+        "pretty": false,
+        "target": "ES2022"
+    },
+    "include": [
+        "./games/"
+    ]
 }

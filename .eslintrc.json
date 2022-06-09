@@ -3,15 +3,30 @@
         "browser": true,
         "es2021": true
     },
-    "extends": "eslint:recommended",
+    "extends": [
+        "eslint:recommended",
+        "plugin:@typescript-eslint/recommended"
+    ],
+    "parser": "@typescript-eslint/parser",
     "parserOptions": {
-        "ecmaVersion": "latest",
+        "ecmaVersion": 13,
         "sourceType": "module"
     },
+    "plugins": [
+        "@typescript-eslint"
+    ],
     "rules": {
-        "indent": ["warn",4],
-        "quotes": ["warn","double"],
-        "semi": ["warn","always"],
-        "no-unused-vars": ["warn",{ "vars": "all", "args": "none", "ignoreRestSiblings": false }]
-    }
+        "indent": [ "warn", 4 ],
+        "quotes": [ "warn", "double" ],
+        "@typescript-eslint/semi": ["warn", "always", { "omitLastInOneLineBlock": true }],
+        "curly": ["warn", "multi-or-nest"],
+        "eqeqeq": "warn",
+        "no-throw-literal": "warn",
+        "no-var": "error",
+        "@typescript-eslint/no-non-null-assertion": "off",
+        "@typescript-eslint/no-unused-vars": ["error", { "vars":"all", "args": "none" }]
+    },
+    "ignorePatterns": [
+        "_.js"
+    ]
 }

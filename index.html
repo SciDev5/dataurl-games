@@ -60,6 +60,7 @@
         /* Document tools */
         let $=document,
             _e=(e,p)=>(p??$.body).appendChild($.createElement(e)),
+            _et=(t,p)=>p.append($.createTextNode(t)),
             _c=(...m)=>{let c=_e("canvas");return[c,c.getContext(...m)]},
         /* Utilities */
             __s=(e,s)=>Object.entries(s).forEach(([k,v])=>e[k]=v)||e,
@@ -78,7 +79,7 @@
         _ae.style.display="none";
     </script>
     <div id="inputs">
-        <div id="d-in">DROP CODE FILES AND ASSETS HERE [ .JS / .CSS / './ASSETS/' ]</div>
+        <div id="d-in">DROP CODE FILES AND ASSETS HERE [ '*.JS', '*.CSS' | 'ASSETS/' | 'icon.png' | '.title *' ]</div>
     </div>
     <div id="converter">
         <button id="conv">FORCE REFRESH</button>
@@ -97,9 +98,9 @@
         };
 
         const REGEXES = {
-            multilineComment: /\/\*(.|\r?\n)*?\*\//g,
+            multilineComment: /\/\*[^]*?\*\//g,
             lineBreak: /\s*\r?\n\s*/g,
-            inlineComment: /\/\/.*$/,
+            inlineComment: /((?!:)[^])\/\/.*$|^\/\/.*$/,
         }
 
         const prefixCode = document.getElementById("prefix-code").textContent.replace(REGEXES.multilineComment,"").replace(REGEXES.lineBreak,"");
@@ -107,6 +108,10 @@
         let inputCodeFileHandle;
         /** @type {FileSystemFileHandle} */
         let inputStyleFileHandle;
+        /** @type {FileSystemFileHandle} */
+        let inputIconFileHandle;
+        /** @type {FileSystemFileHandle} */
+        let inputHTMLFileHandle;
         /** @type {FileSystemDirectoryHandle} */
         let inputAssetsDirectoryHandle;
         /** @type {<T extends HTMLElement>(q:string)=>T} */
@@ -128,6 +133,8 @@
 
         let lastEditedCode = -Infinity;
         let lastEditedStyle = -Infinity;
+        let lastEditedIcon = -Infinity;
+        let lastEditedHTML = -Infinity;
         let lastEditedAssets = "";
         let lastTitleIn = "";
         let lastUseBase64 = false, useBase64 = false;
@@ -151,17 +158,30 @@
         const lazyURLEncode = s=>s.replace(/[%#!?]|\s/g,v=>`%${(()=>{const s=v.charCodeAt(0).toString(16);return "0".repeat(2-s.length)+s})()}`)
 
 
-        /** @type {{[type in "code"|"style"]:(strIn:string)=>string}} */
+        /** @type {{[type in "code"|"style"|"codeExtras"|"html"]:(strIn:string)=>string}} */
         const format = {
+            codeExtras: raw=>raw
+                .replace(/const /g,"let ")
+                .replace(/true /),
             style: raw=>raw
                 .replace(REGEXES.multilineComment,"")
                 .replace(/\s+/g," ")
                 .replace(/ ?([{};:]) ?/g,"$1")
                 .trim(),
+            html: html=>{
+                return html.replace(/\s*\r?\n\s*/g," ").trim();
+            },
             code: raw=>{
-                const codeDecommented = raw.replace(REGEXES.multilineComment,"").split(REGEXES.lineBreak).slice(2).map(v=>
-                    v.replace(REGEXES.inlineComment,"").trim()
-                ).filter(v=>v.length>0).join("");
+                const codeAfterHeader = raw
+                    .replace(/^[^]*?import\s*\{.*?code-prefix";?\s*/,"")
+                    .replace(/export .*?(\r?\n\s*)*$/,"");
+                const codeDecommented = codeAfterHeader
+                    .replace(REGEXES.multilineComment,"")
+                    .split(REGEXES.lineBreak).map(v=>
+                        v.replace(REGEXES.inlineComment,"$1").trim()
+                    )
+                    .filter(v=>v.length>0)
+                    .join("");
                 let codeDespaced = "", wasEscape = false, wasSpace = false, wasBreaker = false;
                 /** @type {false|"'"|"\""|"`"|"/"} */
                 let inString = false;
@@ -202,10 +222,12 @@
             ).sort().join("::") : "";
 
             const
-                fTFile = await inputCodeFileHandle.getFile(), fSFile = await inputStyleFileHandle?.getFile();
+                fTFile = await inputCodeFileHandle.getFile(), fSFile = await inputStyleFileHandle?.getFile(), fIFile = await inputIconFileHandle?.getFile(), fHFile = await inputHTMLFileHandle?.getFile();
             if (
                 fTFile.lastModified <= lastEditedCode &&
                 (!fSFile || fSFile.lastModified <= lastEditedStyle) &&
+                (!fIFile || fIFile.lastModified <= lastEditedIcon) &&
+                (!fHFile || fHFile.lastModified <= lastEditedHTML) &&
                 lastEditedAssets === lastEditedAssetsNow &&
                 lastTitleIn === titleIn.value &&
                 lastUseBase64 === useBase64
@@ -214,13 +236,17 @@
             lastEditedCode = fTFile.lastModified;
             lastTitleIn = titleIn.value;
             lastUseBase64 = useBase64;
+            if (fIFile) lastEditedIcon = fIFile.lastModified;
             if (fSFile) lastEditedStyle = fSFile.lastModified;
+            if (fHFile) lastEditedHTML = fHFile.lastModified;
 
             console.log("%c%s",LOGSTYLE.retranspiling,"RETRANSPILING");
             const
                 title = titleIn.value||"unnamed",
+                formattedHTMLInject = fHFile ? format.html(await fHFile.text()) : "",
+                formattedCode = format.code(await fTFile.text()),
                 formattedStyle = fSFile ? format.style(await fSFile.text()) : "",
-                formattedCode = format.code(await fTFile.text());
+                formattedIconSrc = fIFile ? await blobToDataURL(new Blob([await fIFile.arrayBuffer()],{type:fIFile.type})) : "";
 
             const assetsList = inputAssetsDirectoryHandle ? await traverseAssets(async(path,ns,key,handle)=>{
                 /** @type {File} */
@@ -241,21 +267,23 @@
 
 
             console.log("%cLoaded Code:\n%s",LOGSTYLE.code,formattedCode);
-            console.log("%cLoaded Style:\n%s",LOGSTYLE.code,formattedStyle);
+            formattedStyle && console.log("%cLoaded Style:\n%s",LOGSTYLE.code,formattedStyle);
+            formattedHTMLInject && console.log("%cLoaded HTML:\n%s",LOGSTYLE.code,formattedHTMLInject);
+            formattedIconSrc && console.log("%cLoaded Icon:\n%s",LOGSTYLE.code,formattedIconSrc);
             console.log("%cLoaded Assets:\n%s",LOGSTYLE.code,assetsList.map(v=>`[${v.key}]|${textLenLimit(JSON.stringify(v.data),50)}`).join("\n") || "<none>");
 
             console.log("%c%s",LOGSTYLE.complete,"COMPLETED");
 
-            const transpiledHTML = `<title>${title}</title><style>${formattedStyle}</style><body></body><script>${formattedAssetsLoader}${prefixCode+formattedCode}<${""}/script>`;
+            const formattedHTML = `<title>${title}</title>${fIFile?`<link rel="icon" type="${fIFile.type}" href="${formattedIconSrc}">`:""}<style>${formattedStyle}</style>${formattedHTMLInject}<body></body><script>${formattedAssetsLoader}${prefixCode+formattedCode}<${""}/script>`;
 
-            const transpiled = useBase64 ?
-                await blobToDataURL(new Blob([transpiledHTML],{type:"text/html"})) :
-                "data:text/html,"+lazyURLEncode(transpiledHTML);
-            dOut.href = transpiled;
-            dOut.innerText = textLenLimit(transpiled,50);
-            fOut.src = transpiled;
+            const formatted = useBase64 ?
+                await blobToDataURL(new Blob([formattedHTML],{type:"text/html"})) :
+                "data:text/html,"+lazyURLEncode(formattedHTML);
+            dOut.href = formatted;
+            dOut.innerText = textLenLimit(formatted,50);
+            fOut.src = formatted;
         };
-        /** @type {(fileHandle:FileSystemFileHandle,which:"code"|"style")=>void} */
+        /** @type {(fileHandle:FileSystemFileHandle,which:"code"|"style"|"icon"|"html")=>void} */
         const setFileHandle = (fileHandle,which)=>{
             if (which === "code") {
                 inputCodeFileHandle = fileHandle;
@@ -264,6 +292,14 @@
             if (which === "style") {
                 inputStyleFileHandle = fileHandle;
                 lastEditedStyle = -Infinity;
+            }
+            if (which === "icon") {
+                inputIconFileHandle = fileHandle;
+                lastEditedIcon = -Infinity;
+            }
+            if (which === "html") {
+                inputHTMLFileHandle = fileHandle;
+                lastEditedHTML = -Infinity;
             }
             onSetHandle();
         };
@@ -339,11 +375,13 @@
                     titleIn.value = f.name.slice(7).trim();
                     onSetHandle();
                 } else {
-                    const type = {
+                    console.log(f.name);
+                    const type = f.name==="icon.png"?"icon": {
                         js:"code",
                         css:"style",
+                        html:"html",
                         _:"none"
-                    }[(f.name.match(/\.(js|css)$/i)??[,"_"])[1]];
+                    }[(f.name.match(/\.(js|css|html)$/i)??[,"_"])[1]];
                     if (type === "none") return;
                     setFileHandle(f,type);
                 }
