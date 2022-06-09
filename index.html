@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: 'unsafe-inline' data:">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: 'unsafe-inline' data:; connect-src 'self' http:">
     <title>DATAURL GAMES</title>
     <style>
         body {
@@ -143,7 +143,9 @@
         let lastEditedAssets = "";
         let lastTitleIn = "";
         let lastUseBase64 = false, useBase64 = false;
-        
+
+        let minifyServerOnline = false;
+
 
         /** @type {(text:string,lenLimit:number)=>string} */
         const textLenLimit = (text,lenLimit)=>text.length>lenLimit?text.slice(0,lenLimit)+"...":text;
@@ -198,9 +200,10 @@
                 .replace(/\s*\n\s*/g," ").trim(),
             code: raw=>{
                 const codeAfterHeader = raw
-                    .replace(REGEXES.windowsLineBreak,"\n")
-                    .replace(/^[^]*?import\s*{(.*?)}.*?code-prefix";?\s*/,"[$1]")
-                    .replace(/export .*?(\n\s*)*$/,"");
+                .replace(REGEXES.windowsLineBreak,"\n")
+                .replace(/^[^]*?import\s*{(.*?)}.*?code-prefix";?\s*/,"[$1]")
+                .replace(/export .*?(\n\s*)*$/,"");
+                if (minifyServerOnline) return codeAfterHeader;
                 const codeDecommented = codeAfterHeader
                     .replace(REGEXES.multilineComment,"")
                     .split(REGEXES.lineBreak).map(v=>
@@ -237,6 +240,74 @@
             }
         }
 
+        /**
+         * @type {(aK:{[key:string]:any},aL:{key:string,data:any}[],t:File,s:File,i:File,h:File)=>string}
+        */
+        const mergeFiles = async(
+            assetsByKey,
+            assetsList,
+            fTFile,
+            fSFile,
+            fIFile,
+            fHFile,
+        )=>{
+            await updateMinifyServerOnlineStatus();
+
+            const
+                title = titleIn.value,
+                formattedHTMLInject = fHFile ? await minify(format.html(await fHFile.text()), "html") : "",
+                formattedCodeWithHeader = format.code(await fTFile.text()),
+                [,usedPrefixCodeRaw,formattedCode] = /^\[(.*?)\]([^]*)$/.exec(formattedCodeWithHeader) ?? [,"",formattedCodeWithHeader],
+                formattedStyle = fSFile ? await minify(format.style(await fSFile.text()), "css") : "",
+                formattedIconSrc = fIFile ? await blobToDataURL(new Blob([await fIFile.arrayBuffer()],{type:fIFile.type})) : "",
+                formattedPrefixCode = genPrefixCode(usedPrefixCodeRaw.split(",").map(v=>v.trim()).filter(v=>v.length>0)),
+                formattedAssetsLoader = JSON.stringify(assetsByKey),
+
+                assetInsertMarker = '"<assets0u57057135711375183758819759135157139571835193758179375'+Math.random()+'>"',
+
+                minifiedCode = (await minify("let _ad="+assetInsertMarker+";"+formattedPrefixCode+formattedCode, "js")).replace(assetInsertMarker,formattedAssetsLoader);
+
+
+            console.log("%cLoaded Code:\n%s",LOGSTYLE.code,minifiedCode);
+            formattedStyle && console.log("%cLoaded Style:\n%s",LOGSTYLE.code,formattedStyle);
+            formattedHTMLInject && console.log("%cLoaded HTML:\n%s",LOGSTYLE.code,formattedHTMLInject);
+            formattedIconSrc && console.log("%cLoaded Icon:\n%s",LOGSTYLE.code,formattedIconSrc);
+            console.log("%cLoaded Assets:\n%s",LOGSTYLE.code,assetsList.map(v=>`[${v.key}]|${textLenLimit(JSON.stringify(v.data),50)}`).join("\n") || "<none>");
+
+            console.log("%c%s",LOGSTYLE.complete,"COMPLETED");
+
+            return [
+                ...title ? ["<title>",title,"</title>"]:[],
+                ...fIFile ? [`<link rel="icon" type="${fIFile.type}" href="${formattedIconSrc}">`]:[],
+                ...fSFile ? ["<style>",formattedStyle,"</style>"]:[],
+                ...fHFile ? [formattedHTMLInject]:[],
+                "<body></body>",
+                "<script>",
+                minifiedCode,
+                "<\/script>",
+            ].join("");
+        };
+
+        const updateMinifyServerOnlineStatus = async()=>{
+            try {
+                const contr = new AbortController();
+                setTimeout(()=>contr.abort("timeout"),100);
+                if(await (await fetch("http://localhost:3000/",{
+                    signal:contr.signal,
+                })).json() === true) minifyServerOnline = true;
+            } catch (e) {
+                console.warn("minify server is offline: you will get better compression if you `node ./minification/index.mjs` (already configured as a launch in vscode)");
+                minifyServerOnline = false;
+            }
+        }
+        /** @type {(code:string,ext:"js"|"css"|"html")=>Promise<string>} */
+        const minify = async(code,ext) => {
+            if (!minifyServerOnline) return code;
+            return await (await fetch("http://localhost:3000/"+ext,{method:"post",body:code})).text();
+        };
+        window.minify=async(...e)=>{updateMinifyServerOnlineStatus();return await minify(...e)};
+
+
         const convert = async()=>{
             if (!inputCodeFileHandle) return;
             console.log("%cchecking...",LOGSTYLE.checking);
@@ -268,16 +339,9 @@
             if (fIFile) lastEditedIcon = fIFile.lastModified;
             if (fSFile) lastEditedStyle = fSFile.lastModified;
             if (fHFile) lastEditedHTML = fHFile.lastModified;
+            
 
             console.log("%c%s",LOGSTYLE.retranspiling,"RETRANSPILING");
-            const
-                title = titleIn.value||"unnamed",
-                formattedHTMLInject = fHFile ? format.html(await fHFile.text()) : "",
-                formattedCodeWithHeader = format.code(await fTFile.text()), _=console.log(formattedCodeWithHeader),
-                [,usedPrefixCodeRaw,formattedCode] = /^\[(.*?)\]([^]*)$/.exec(formattedCodeWithHeader) ?? [,"",formattedCodeWithHeader],
-                formattedStyle = fSFile ? format.style(await fSFile.text()) : "",
-                formattedIconSrc = fIFile ? await blobToDataURL(new Blob([await fIFile.arrayBuffer()],{type:fIFile.type})) : "",
-                formattedPrefixCode = genPrefixCode(usedPrefixCodeRaw.split(",").map(v=>v.trim()).filter(v=>v.length>0));
 
             const assetsList = inputAssetsDirectoryHandle ? await traverseAssets(async(path,ns,key,handle)=>{
                 /** @type {File} */
@@ -294,20 +358,8 @@
             const assetsByKey = {};
             assetsList.forEach(({data,key})=>assetsByKey[key]=data);
 
-            const formattedAssetsLoader = `let _ad=${JSON.stringify(assetsByKey)};`
 
-
-            console.log("%cLoaded Code:\n%s",LOGSTYLE.code,formattedCode);
-            console.log("%cLoaded Prefix:\n%s",LOGSTYLE.code,formattedPrefixCode);
-            formattedStyle && console.log("%cLoaded Style:\n%s",LOGSTYLE.code,formattedStyle);
-            formattedHTMLInject && console.log("%cLoaded HTML:\n%s",LOGSTYLE.code,formattedHTMLInject);
-            formattedIconSrc && console.log("%cLoaded Icon:\n%s",LOGSTYLE.code,formattedIconSrc);
-            console.log("%cLoaded Assets:\n%s",LOGSTYLE.code,assetsList.map(v=>`[${v.key}]|${textLenLimit(JSON.stringify(v.data),50)}`).join("\n") || "<none>");
-
-            console.log("%c%s",LOGSTYLE.complete,"COMPLETED");
-
-            const formattedHTML = `<title>${title}</title>${fIFile?`<link rel="icon" type="${fIFile.type}" href="${formattedIconSrc}">`:""}<style>${formattedStyle}</style>${formattedHTMLInject}<body></body><script>${formattedAssetsLoader}${formattedPrefixCode}${formattedCode}<${""}/script>`;
-
+            const formattedHTML = await mergeFiles(assetsByKey,assetsList,fTFile,fSFile,fIFile,fHFile)
             const formatted = useBase64 ?
                 await blobToDataURL(new Blob([formattedHTML],{type:"text/html"})) :
                 "data:text/html,"+lazyURLEncode(formattedHTML);

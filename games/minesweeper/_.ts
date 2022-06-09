@@ -264,7 +264,7 @@ class MineSweep {
         const
             {ctx} = this,
             tx = x*ts, ty = y*ts,
-            dr=(n:number)=>
+            drawFromAtlas=(n:number)=>
                 ctx.drawImage(tileImgs,
                     n*ts,0, ts,ts,
                     tx,ty,ts,ts
@@ -272,10 +272,10 @@ class MineSweep {
         ctx.clearRect(tx,ty,ts,ts);
         [
             ()=>0, // empty tile: draw nothing
-            ()=>dr(this.neighbors(x,y)), // dug tile, draw number
-            ()=>dr(9), // flagged tile, draw atlas image 9 [flagged tile]
-            ()=>showMines && dr(10), // mine tile, if showMines, draw atlas image 10 [mine], else treat it as an unchecked tile
-            ()=>{showMines && dr(10); dr(9)}, // flagged mine tile, if showMines, draw atlas image 10 [mine], else treat it as an flagged tile 9 [flag]
+            ()=>drawFromAtlas(this.neighbors(x,y)), // dug tile, draw number
+            ()=>drawFromAtlas(9), // flagged tile, draw atlas image 9 [flagged tile]
+            ()=>showMines && drawFromAtlas(10), // mine tile, if showMines, draw atlas image 10 [mine], else treat it as an unchecked tile
+            ()=>{showMines && drawFromAtlas(10); drawFromAtlas(9)}, // flagged mine tile, if showMines, draw atlas image 10 [mine], else treat it as an flagged tile 9 [flag]
         ][this.grid[x][y]]();
     }
 
@@ -294,13 +294,13 @@ class MineSweep {
 
 
 let game:MineSweep|undefined;
-const gameConst = {w:[5,20,50],h:[5,10,50],m:[5,20,50],s:[.5,2,4]} as const,
-    constrainByGameConst = (v:number,c:keyof typeof gameConst)=>isFinite(v)?Math.max(Math.min(v,gameConst[c][2]),gameConst[c][0]):gameConst[c][1],
-    inputConfigByGameConst = (c:keyof typeof gameConst,step:number)=>({
+const gameConst = {width:[5,20,50],height:[5,10,50],mineFrac:[5,20,50],scale:[.5,2,4]} as const,
+    constrainByGameConst = (v:number,gConst:typeof gameConst[keyof typeof gameConst])=>isFinite(v)?Math.max(Math.min(v,gConst[2]),gConst[0]):gConst[1],
+    inputConfigByGameConst = (gConst:typeof gameConst[keyof typeof gameConst],step:number)=>({
         type:"number",
-        min: gameConst[c][0] as never as string,
-        valueAsNumber: gameConst[c][1],
-        max: gameConst[c][2] as never as string,
+        min: gConst[0] as never as string,
+        valueAsNumber: gConst[1],
+        max: gConst[2] as never as string,
         step
     }) as never as Partial<HTMLInputElement>;
 
@@ -308,31 +308,31 @@ const divRoot = __s(_e("div"),{className:"root"});
 
 _e("h2",divRoot).innerText = "minesweeper";
 _e("h5",divRoot).innerHTML = "[<a href=\"https://github.com/SciDev5/dataurl-games\">SciDev5</a>]";
-__s(_e("div",divRoot),{innerHTML:"CONTROLS\x20[click:\x20<b>dig</b>;\x20shift+click:\x20<b>[un]mark flag</b>]",id:"instruct"});
+__s(_e("div",divRoot),{innerHTML:"CONTROLS [click: <b>dig</b>; shift+click: <b>[un]mark flag</b>]",id:"instruct"});
 
 const buttonRoot = __s(_e("div",divRoot),{className:"buttons"});
 
-_et("[size:\x20",buttonRoot);
-const widthIn = __s(_e("input",buttonRoot),inputConfigByGameConst("w",5));
+_et("[size: ",buttonRoot);
+const widthIn = __s(_e("input",buttonRoot),inputConfigByGameConst(gameConst.width,5));
 _et("x",buttonRoot);
-const heightIn = __s(_e("input",buttonRoot),inputConfigByGameConst("h",5));
-_et(";\x20mine fraction:\x20",buttonRoot);
-const mineFracIn = __s(_e("input",buttonRoot),inputConfigByGameConst("m",5));
-_et("%;\x20view-scale:\x20",buttonRoot);
-const scaleIn = __s(_e("input",buttonRoot),{...inputConfigByGameConst("s",.5),
+const heightIn = __s(_e("input",buttonRoot),inputConfigByGameConst(gameConst.height,5));
+_et("; mine fraction: ",buttonRoot);
+const mineFracIn = __s(_e("input",buttonRoot),inputConfigByGameConst(gameConst.mineFrac,5));
+_et("%; view-scale: ",buttonRoot);
+const scaleIn = __s(_e("input",buttonRoot),{...inputConfigByGameConst(gameConst.scale,.5),
     onchange:e=>{
         game?.setCnvScale(scaleIn.valueAsNumber);
     }
 });
-_et("x]\x20::\x20",buttonRoot);
+_et("x] :: ",buttonRoot);
 
 const startBtn = __s(_e("button",buttonRoot),{
     innerText:" [ START ] ",
     onclick:e=>{
         const
-            w = constrainByGameConst(widthIn.valueAsNumber,"w"),
-            h = constrainByGameConst(heightIn.valueAsNumber,"h"),
-            m = constrainByGameConst(mineFracIn.valueAsNumber,"m")/100;
+            w = constrainByGameConst(widthIn.valueAsNumber,gameConst.width),
+            h = constrainByGameConst(heightIn.valueAsNumber,gameConst.height),
+            m = constrainByGameConst(mineFracIn.valueAsNumber,gameConst.mineFrac)/100;
         game?.destroy();
         game = new MineSweep(w,h,divRoot).start(Math.floor(w*h*m)).setCnvScale(scaleIn.valueAsNumber);
         startBtn.innerText = " [ RESTART ] ";

@@ -3,7 +3,8 @@
         "lib": ["ESNext","DOM"],
         "module": "ES2022",
         "pretty": false,
-        "target": "ES2022"
+        "target": "ES2022",
+        "moduleResolution": "node"
     },
     "include": [
         "./games/"

@@ -28,17 +28,16 @@ const nextPlayer = ()=>{
 /** @type {(x:number,y:number)=>number|false} */
 const bValue = (x,y)=>{
     if (x >= sz.w || x < 0 || y >= sz.h || y < 0) return false;
-    return ({_0:0,_1:1})[board[y].cols[x].className] ?? -1;
+    return parseInt((/_(\d)/.exec(board[y].cols[x].className) ?? [])[1]??-1);
 };
 
-/** @type {(x:number,y:number)=>{v:number,dir:[number,number]}[]} */
+/** @type {(x:number,y:number)=>[number,[number,number]][]} */
 const checkLine = (x,y)=>{
-    /** @type {{v:number,dir:[number,number]}[]} */
+    /** @type {[number,[number,number]][]} */
     const lines = [];
     /** @type {[number,number][]} */
     const dirs = [[0,1],[1,1],[1,0],[1,-1]], v = bValue(x,y);
     if (v === false || v === -1) return [];
-    outer:
     for (const dir of dirs) {
         let n = 0;
         for (let i = 1-msz; i < msz; i++) {
@@ -47,7 +46,7 @@ const checkLine = (x,y)=>{
             if (vI === v) n++;
         }
         if (n === msz)
-            lines.push({v,dir});
+            lines.push([v,dir]);
     }
     return lines;
 };
@@ -60,9 +59,9 @@ const place = (x,y)=>{
     const lines = checkLine(x,y);
 
     if (lines.length > 0) {
-        win = lines[0].v;
+        win = lines[0][0];
         winDisp.innerText = `${["x","o"][win]} WINS!`;
-        for (const {dir} of lines) {
+        for (const [,dir] of lines) {
             for (let i = 1-msz; i < msz; i++) {
                 const [z,w]=dir.map(d=>d*i);
                 board[w+y]?.cols[z+x]?.classList.add("h");
