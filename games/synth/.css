@@ -1,0 +1,43 @@
+/* LOW RES MODE:   separate these -> */
+
+body {
+    font: 1em monospace;
+    background: #202022;
+    color: #ffffff;
+    text-align: center;
+}
+
+div {
+    margin: 1em;
+}
+table {
+    border-spacing: 0;
+    display: inline;
+    white-space: pre;
+}
+td {
+    padding: .1em .5em;
+    border-inline: 1px solid #777;
+}
+
+/*/
+
+body {
+    font: 1em monospace;
+    background: #202022;
+    color: #ffffff;
+}
+
+#k {
+    white-space:pre;
+}
+
+
+/**/
+
+#t {
+    background: #fff;
+    color: #000;
+    font: bold 1.4em monospace;
+    padding: 0em 1em;
+}

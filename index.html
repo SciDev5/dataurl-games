@@ -58,9 +58,10 @@
 <body>
     <script id="prefix-code">
         /* Document tools */
-        let $=document,
-            _e=(e,p)=>(p??$.body).appendChild($.createElement(e)),              //[]
-            _et=(t,p)=>p.append($.createTextNode(t)),                           //[]
+        let 
+            $=document,                                                         //[]
+            _e=(e,p)=>(p??$.body).appendChild($.createElement(e)),              //[$]
+            _et=(t,p)=>p.append($.createTextNode(t)),                           //[$]
             _c=(...m)=>{let c=_e("canvas");return[c,c.getContext(...m)]},       //[_e]
         /* Utilities */
             __s=(e,s)=>Object.entries(s).forEach(([k,v])=>e[k]=v)||e,           //[]
@@ -95,7 +96,8 @@
             code:"border-left: 2px solid #777;background:#0077ff44;margin:.5em 1em;padding:.5em",
             checking:"opacity:0.5;background:#ff770022;",
             retranspiling:"padding:1em 2em;margin:1em 0em;text-align:center;font-weight:bold;border-bottom:2px solid #777;background:#3399ff44;",
-            complete:"padding:1em 2em;margin:1em 0em;text-align:center;font-weight:bold;border-bottom:2px solid #777;background:#33ff9922;",
+            completeA:"padding:1em 2em;margin:1em 0em;text-align:center;font-weight:bold;border-bottom:2px solid #777;background:#33ff9922;",
+            completeB:"padding:0em 1em;margin-bottom:1em;text-align:center;background:#33ccdd22;",
         };
 
         const REGEXES = {
@@ -122,7 +124,7 @@
         /** @type {<T extends HTMLElement>(q:string)=>T} */
         const dqs=s=>document.querySelector(s);
 
-        console.log("%cPrefix Code:\n%s",LOGSTYLE.code,prefixCode.split("\n").map(v=>v.replace(REGEXES.inlineComment,"$1").trim()).join(""));
+        console.log("%cPrefix Code:\n%s",LOGSTYLE.code,prefixCode.split("\n").map(v=>v.replace(REGEXES.inlineComment,"$1").trim()).join(" "));
 
         const dIn = dqs("#d-in");
         /** @type {HTMLButtonElement} */
@@ -167,12 +169,19 @@
         /** @type {(usedVars:string[])=>string} */
         const genPrefixCode = usedVars=>{
             const trueDeps = new Set(usedVars);
-            usedVars.forEach(vName=>prefixInterdependencies[vName].forEach(vDep=>trueDeps.add(vDep)));
+            let nDeps = trueDeps.size;
+            for (;;) { // Keep filling in dependencies until nothing new happens.
+                trueDeps.forEach(vName=>prefixInterdependencies[vName]?.forEach(vDep=>trueDeps.add(vDep)));
+                if (trueDeps.size === nDeps) break;
+                nDeps = trueDeps.size;
+            }
+
+            console.log(trueDeps);
 
             return prefixCode
                 .split(/\n/)
                 .filter(line=>{
-                    const match = /^(\w+)[=,].*?\/\/\[.*?\]$/.exec(line.trim());
+                    const match = /^([a-zA-Z0-9_$]+)[=,].*?\/\/\[.*?\]$/.exec(line.trim());
                     if (match) { // is optional line.
                         const [,vName] = match;
                         return trueDeps.has(vName);
@@ -180,6 +189,7 @@
                     } else return true;
                 })
                 .map(v=>v.replace(REGEXES.inlineComment,"$1").trim())
+                .map(v=>v==="let"?"let ":v)
                 .join("")
                 .replace(/,;/g,";");
         };
@@ -274,8 +284,6 @@
             formattedIconSrc && console.log("%cLoaded Icon:\n%s",LOGSTYLE.code,formattedIconSrc);
             console.log("%cLoaded Assets:\n%s",LOGSTYLE.code,assetsList.map(v=>`[${v.key}]|${textLenLimit(JSON.stringify(v.data),50)}`).join("\n") || "<none>");
 
-            console.log("%c%s",LOGSTYLE.complete,"COMPLETED");
-
             return [
                 ...title ? ["<title>",title,"</title>"]:[],
                 ...fIFile ? [`<link rel="icon" type="${fIFile.type}" href="${formattedIconSrc}">`]:[],
@@ -366,6 +374,15 @@
             dOut.href = formatted;
             dOut.innerText = textLenLimit(formatted,50);
             fOut.src = formatted;
+
+            console.log(
+                "%c%s%c\n[ length:%d, qrCode:%s% ]",
+                LOGSTYLE.completeA,
+                "COMPLETED",
+                LOGSTYLE.completeB,
+                formatted.length,
+                ((await new Blob([formatted]).arrayBuffer()).byteLength/2953*100).toFixed(1)
+            );
         };
         /** @type {(fileHandle:FileSystemFileHandle,which:"code"|"style"|"icon"|"html")=>void} */
         const setFileHandle = (fileHandle,which)=>{

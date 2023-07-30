@@ -10,6 +10,7 @@ type HTMLElementsByTag = {
     tbody: HTMLBodyElement;
     tr: HTMLTableRowElement;
     td: HTMLTableCellElement;
+    th: HTMLTableCellElement;
 
     button: HTMLButtonElement;
 
